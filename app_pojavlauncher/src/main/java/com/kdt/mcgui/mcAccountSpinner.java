@@ -218,6 +218,11 @@ public class mcAccountSpinner extends AppCompatSpinner implements AdapterView.On
         return mSelectecAccount;
     }
 
+    /** Re-reads accounts from files and picks the current PojavProfile account. */
+    public void refreshAccounts(){
+        reloadAccounts(true, 0);
+    }
+
     public int getLoginState(){
         return mLoginStep;
     }

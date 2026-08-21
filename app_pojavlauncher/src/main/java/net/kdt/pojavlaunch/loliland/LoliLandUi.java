@@ -172,6 +172,9 @@ public final class LoliLandUi {
 
     /** Selects the profile of an installed build and triggers the normal launch flow. */
     public static void launchBuild(android.app.Activity activity, String systemName) {
+        // Make sure the game account exists and is selected before launching
+        LoliLandAuth.applyToBuilds(activity);
+
         String versionId = "loliland-" + systemName.replaceAll("[^a-zA-Z0-9._-]", "_").toLowerCase();
         net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.load();
         for (java.util.Map.Entry<String, net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile> e
@@ -184,6 +187,14 @@ public final class LoliLandUi {
                 break;
             }
         }
+
+        // Refresh the account spinner so getSelectedAccount() is not null (otherwise the
+        // launcher would push the Microsoft login screen instead of starting the game)
+        try {
+            android.view.View v = activity.findViewById(net.kdt.pojavlaunch.R.id.account_spinner);
+            if (v instanceof com.kdt.mcgui.mcAccountSpinner) ((com.kdt.mcgui.mcAccountSpinner) v).refreshAccounts();
+        } catch (Exception ignored) {}
+
         net.kdt.pojavlaunch.extra.ExtraCore.setValue(net.kdt.pojavlaunch.extra.ExtraConstants.LAUNCH_GAME, true);
     }
 
