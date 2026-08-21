@@ -340,6 +340,9 @@ public class LauncherActivity extends BaseActivity {
 
         new AsyncVersionList().getVersionList(versions -> ExtraCore.setValue(ExtraConstants.RELEASE_TABLE, versions), false);
 
+        LoliLandBuildImporter.scanAndImportAsync(this);
+
+
         mInstallTracker = new ModloaderInstallTracker(this);
 
         mProgressLayout.observe(ProgressLayout.DOWNLOAD_MINECRAFT);
