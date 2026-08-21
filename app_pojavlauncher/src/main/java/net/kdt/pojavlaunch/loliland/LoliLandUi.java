@@ -110,11 +110,6 @@ public final class LoliLandUi {
 
     public static void showClients(android.app.Activity activity) {
         Context ctx = activity;
-        if (!LoliLandAuth.isLoggedIn(ctx)) {
-            toast(ctx, "Сначала войдите в аккаунт LoliLand");
-            showLogin(activity);
-            return;
-        }
         toast(ctx, "LoliLand: загрузка списка сборок...");
         PojavApplication.sExecutorService.execute(() -> {
             try {
@@ -143,8 +138,14 @@ public final class LoliLandUi {
                             .setTitle(picked.displayName)
                             .setMessage("Скачать сборку (" + picked.size + ")?\n" +
                                     "Файлы проверяются по SHA-256, докачка поддерживается.")
-                            .setPositiveButton("Скачать", (d2, w2) ->
-                                    LoliLandClients.downloadAsync(activity, picked))
+                            .setPositiveButton("Скачать", (d2, w2) -> {
+                                if (!LoliLandAuth.isLoggedIn(activity)) {
+                                    toast(activity, "Для скачивания войдите в аккаунт");
+                                    showLogin(activity);
+                                    return;
+                                }
+                                LoliLandClients.downloadAsync(activity, picked);
+                            })
                             .setNegativeButton("Отмена", null)
                             .show();
                 })

@@ -118,21 +118,36 @@ public final class LoliLandApi {
 
     /* ===================== CATALOG / DOWNLOADS ===================== */
 
-    /** POST /gateway with Access headers; returns the raw LauncherGatewayData JSON. */
+    /** POST /gateway/token (auth via Access headers); returns the raw LauncherGatewayData JSON. */
     public static JSONObject gatewayWithClients(AuthResult creds) throws IOException {
         IOException last = null;
+        String[] paths = {"/gateway/token", "/gateway"};
         for (String gw : gateways()) {
-            try {
-                HttpURLConnection c = open(gw + "/gateway", "POST");
-                setCommonHeaders(c, creds);
-                c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                writeAll(c, baseBody().toString().getBytes(StandardCharsets.UTF_8));
-                int status = c.getResponseCode();
-                String text = readAll(c);
-                if (status < 200 || status >= 300) continue;
-                return new JSONObject(text);
-            } catch (Exception e) {
-                if (e instanceof IOException) last = (IOException) e; else last = new IOException(e);
+            for (String path : paths) {
+                try {
+                    HttpURLConnection c = open(gw + path, "POST");
+                    setCommonHeaders(c, creds);
+                    c.setRequestProperty("Content-Type", "application/json");
+                    writeAll(c, baseBody().toString().getBytes(StandardCharsets.UTF_8));
+                    int status = c.getResponseCode();
+                    String text = readAll(c);
+                    if (status == 401 || status == 403) {
+                        throw new ApiException(status,
+                            "Требуется повторный вход (сервер ответил " + status + ")");
+                    }
+                    if (status < 200 || status >= 300) continue;
+                    JSONObject resp = new JSONObject(text);
+                    JSONObject err = resp.optJSONObject("authError");
+                    if (err != null && err.length() > 0) {
+                        throw new ApiException(err.optInt("error_code", 0),
+                            err.optString("error_message", "Ошибка авторизации"));
+                    }
+                    return resp;
+                } catch (ApiException e) {
+                    throw e;
+                } catch (Exception e) {
+                    if (e instanceof IOException) last = (IOException) e; else last = new IOException(e);
+                }
             }
         }
         throw last != null ? last : new IOException("No gateway reachable");
@@ -147,13 +162,25 @@ public final class LoliLandApi {
                 setCommonHeaders(c, creds);
                 int status = c.getResponseCode();
                 String text = readAll(c);
-                if (status < 200 || status >= 300) continue;
+                if (status < 200 || status >= 300) {
+                    last = describeHttpError(status, text);
+                    continue;
+                }
                 return new JSONObject(text);
-            } catch (Exception e) {
-                last = e instanceof IOException ? (IOException) e : new IOException(e);
+            } catch (IOException e) {
+                last = e;
             }
         }
         throw last != null ? last : new IOException("No gateway reachable");
+    }
+
+    private static IOException describeHttpError(int status, String body) {
+        try {
+            JSONObject err = new JSONObject(body);
+            String msg = err.optString("error_message", "");
+            if (!msg.isEmpty()) return new ApiException(err.optInt("error_code", status), msg + " (HTTP " + status + ")");
+        } catch (Exception ignored) {}
+        return new IOException("HTTP " + status);
     }
 
     /** Opens a download stream for a client file; caller must close. */

@@ -49,19 +49,15 @@ public final class LoliLandClients {
                 e.systemName = c.optString("systemName", null);
                 e.displayName = c.optString("displayName",
                         c.optString("title", c.optString("systemName", "?")));
-                e.size = formatSize(c.optLong("size", 0));
+                e.size = c.optString("size", "?");
+                if ("BIG".equals(e.size)) e.size = "крупная";
+                else if ("SMALL".equals(e.size)) e.size = "лёгкая";
                 if (e.uuid == null || e.uuid.isEmpty()) continue;
                 if (e.systemName == null || e.systemName.isEmpty()) e.systemName = e.uuid.substring(0, 8);
                 out.add(e);
             }
         }
         return out;
-    }
-
-    private static String formatSize(long bytes) {
-        if (bytes <= 0) return "?";
-        if (bytes > (1L << 30)) return String.format(java.util.Locale.US, "%.1f GB", bytes / 1073741824.0);
-        return String.format(java.util.Locale.US, "%.0f MB", bytes / 1048576.0);
     }
 
     /* ==================== DOWNLOAD ==================== */
