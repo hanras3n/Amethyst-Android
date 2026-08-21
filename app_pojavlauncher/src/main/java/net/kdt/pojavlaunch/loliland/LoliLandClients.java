@@ -64,22 +64,51 @@ public final class LoliLandClients {
 
     /* ==================== DOWNLOAD ==================== */
 
+    public interface DownloadListener {
+        /** Called once before downloading starts, on the worker thread. */
+        void onTotals(long totalBytes, int totalFiles);
+        /**
+         * Called as data arrives, on the worker thread.
+         * Implementations must throttle UI updates themselves.
+         */
+        void onProgress(long bytesDone, int filesDone);
+        void onDone();
+        void onError();
+    }
+
+    private static volatile Progress currentProgress;
+
+    /** Requests cancellation of the currently running download, if any. */
+    public static void cancelCurrentDownload() {
+        Progress p = currentProgress;
+        if (p != null) p.cancel();
+    }
+
     public static void downloadAsync(Context ctx, ClientEntry entry) {
+        downloadAsync(ctx, entry, null);
+    }
+
+    public static void downloadAsync(Context ctx, ClientEntry entry, DownloadListener listener) {
         android.app.Activity activity = ctx instanceof android.app.Activity ? (android.app.Activity) ctx : null;
         Context app = ctx.getApplicationContext();
         PojavApplication.sExecutorService.execute(() -> {
             try {
-                downloadSync(app, entry);
+                downloadSync(app, entry, listener);
+                if (listener != null) listener.onDone();
                 LoliLandBuildImporter.notify(app, "LoliLand: \"" + entry.displayName + "\" установлена!");
             } catch (Throwable t) {
                 android.util.Log.e("LoliLandDL", "Download failed", t);
                 String msg = t.getClass().getSimpleName()
                         + (t.getMessage() != null ? ": " + t.getMessage() : "");
                 appendErrorLog(app, entry, t);
+                if (listener != null) listener.onError();
                 showError(activity, "Ошибка скачивания \"" + entry.displayName + "\"", msg);
             }
         });
     }
+
+    /** Incremented on every protocol change; shown in dialogs so stale installs are detectable. */
+    public static final String BUILD_TAG = "ll-dl3";
 
     private static void showError(android.app.Activity activity, String title, String message) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
@@ -88,7 +117,8 @@ public final class LoliLandClients {
         }
         activity.runOnUiThread(() -> {
             TextView tv = new TextView(activity);
-            tv.setText(message);
+            tv.setText(message + "\n\n—\nсборка: " + BUILD_TAG
+                    + "\nполный лог: " + new File(Tools.DIR_GAME_HOME, "loliland-error.log").getAbsolutePath());
             tv.setTextIsSelectable(true);
             int pad = (int) (20 * activity.getResources().getDisplayMetrics().density);
             tv.setPadding(pad, pad / 2, pad, 0);
@@ -115,7 +145,7 @@ public final class LoliLandClients {
         } catch (Exception ignored) {}
     }
 
-    private static void downloadSync(Context ctx, ClientEntry entry) throws Exception {
+    private static void downloadSync(Context ctx, ClientEntry entry, DownloadListener listener) throws Exception {
         LoliLandApi.AuthResult creds = LoliLandAuth.loadCreds(ctx);
         if (creds == null) throw new IllegalStateException("Не выполнен вход в аккаунт LoliLand");
 
@@ -127,8 +157,27 @@ public final class LoliLandClients {
         File gameDir = new File(Tools.DIR_GAME_NEW, "games/" + systemName);
         ensureDir(gameDir);
 
-        // 1. Client files -> game dir
         JSONArray clientMapping = info.optJSONArray("clientFileMapping");
+        JSONArray assetMapping = info.optJSONArray("assetsFileMapping");
+
+        Progress progress = new Progress(listener);
+        progress.addTotals(clientMapping);
+        progress.addTotals(assetMapping);
+        progress.emitTotals();
+        currentProgress = progress;
+        try {
+            runDownload(ctx, entry, creds, info, launch, systemName, versionId, gameDir,
+                    clientMapping, assetMapping, progress);
+        } finally {
+            currentProgress = null;
+        }
+    }
+
+    private static void runDownload(Context ctx, ClientEntry entry, LoliLandApi.AuthResult creds,
+            JSONObject info, JSONObject launch, String systemName, String versionId, File gameDir,
+            JSONArray clientMapping, JSONArray assetMapping, Progress progress) throws Exception {
+
+        // 1. Client files -> game dir
         List<String[]> done = new ArrayList<>(); // [original, absolute path]
         int total = clientMapping == null ? 0 : clientMapping.length();
         for (int i = 0; i < total; i++) {
@@ -137,14 +186,14 @@ public final class LoliLandClients {
             long size = f.optLong("size", -1);
             String sha256 = f.optString("sha256", "");
             File dest = new File(gameDir, original);
-            fetchIfNeeded(creds, entry.uuid, original, dest, size, sha256);
+            progress.checkCancelled();
+            fetchIfNeeded(creds, progress, entry.uuid, original, dest, size, sha256);
             done.add(new String[]{original, dest.getAbsolutePath()});
             if (i % 200 == 0) progress(ctx, entry.displayName, i + 1, total);
         }
         progress(ctx, entry.displayName, total, total);
 
         // 2. Assets -> shared assets root (objects are content-addressed, safe to merge)
-        JSONArray assetMapping = info.optJSONArray("assetsFileMapping");
         String assetsRaw = launch.optString("assets", "");
         String assetsUrlPart = assetsRaw.replace(':', '/').replace('\\', '/');
         String assetIndexId = null;
@@ -154,7 +203,8 @@ public final class LoliLandClients {
             String original = f.getString("original");
             String rel = original.replace('\\', '/');
             File dest = new File(Tools.ASSETS_PATH, rel);
-            fetchAsset(creds, assetsUrlPart, dest,
+            progress.checkCancelled();
+            fetchAsset(creds, progress, assetsUrlPart, dest,
                     f.optLong("size", -1), f.optString("sha256", ""));
             if (rel.startsWith("indexes/") && rel.endsWith(".json") && assetIndexId == null) {
                 assetIndexId = rel.substring("indexes/".length(), rel.length() - ".json".length());
@@ -296,29 +346,36 @@ public final class LoliLandClients {
 
     /* ==================== FILE FETCH ==================== */
 
-    private static void fetchIfNeeded(LoliLandApi.AuthResult creds, String uuid,
+    private static void fetchIfNeeded(LoliLandApi.AuthResult creds, Progress progress, String uuid,
             String original, File dest, long size, String sha256) throws Exception {
         if (dest.isFile() && (size <= 0 || dest.length() == size)
-                && (sha256.isEmpty() || sha256Matches(dest, sha256))) return;
+                && (sha256.isEmpty() || sha256Matches(dest, sha256))) {
+            progress.fileSkipped(Math.max(size, 0));
+            return;
+        }
         if (sha256 == null || sha256.isEmpty()) {
             throw new Exception("Server sent no SHA-256 for " + original);
         }
         ensureDir(dest.getParentFile());
         File tmp = new File(dest.getParentFile(), dest.getName() + ".part");
         InputStream in = LoliLandApi.downloadClientFile(creds, uuid, sha256);
-        transfer(in, tmp);
+        transfer(in, tmp, progress);
         if (sha256 != null && !sha256.isEmpty() && !sha256Matches(tmp, sha256)) {
             tmp.delete();
             throw new Exception("Checksum mismatch: " + original);
         }
         if (dest.exists()) dest.delete();
         if (!tmp.renameTo(dest)) copyFile(tmp, dest);
+        progress.fileDone();
     }
 
-    private static void fetchAsset(LoliLandApi.AuthResult creds, String assetsUrlPart,
+    private static void fetchAsset(LoliLandApi.AuthResult creds, Progress progress, String assetsUrlPart,
             File dest, long size, String sha256) throws Exception {
         if (dest.isFile() && (size <= 0 || dest.length() == size)
-                && (sha256.isEmpty() || sha256Matches(dest, sha256))) return;
+                && (sha256.isEmpty() || sha256Matches(dest, sha256))) {
+            progress.fileSkipped(Math.max(size, 0));
+            return;
+        }
         if (sha256 == null || sha256.isEmpty()) {
             throw new Exception("Server sent no SHA-256 for asset " + dest.getName());
         }
@@ -328,9 +385,10 @@ public final class LoliLandClients {
         ensureDir(dest.getParentFile());
         File tmp = new File(dest.getParentFile(), dest.getName() + ".part");
         InputStream in = LoliLandApi.downloadAssetFile(creds, assetsUrlPart, sha256);
-        transfer(in, tmp);
+        transfer(in, tmp, progress);
         if (dest.exists()) dest.delete();
         if (!tmp.renameTo(dest)) copyFile(tmp, dest);
+        progress.fileDone();
     }
 
     private static void copyFile(File src, File dst) throws Exception {
@@ -343,13 +401,79 @@ public final class LoliLandClients {
         fis.close();
     }
 
-    private static void transfer(InputStream in, File dest) throws Exception {
+    private static void transfer(InputStream in, File dest, Progress progress) throws Exception {
         FileOutputStream fos = new FileOutputStream(dest);
         byte[] buf = new byte[1 << 16];
         int n;
-        while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
-        fos.close();
-        in.close();
+        try {
+            while ((n = in.read(buf)) > 0) {
+                progress.checkCancelled();
+                fos.write(buf, 0, n);
+                progress.addBytes(n);
+            }
+        } finally {
+            try { fos.close(); } catch (Exception ignored) {}
+            try { in.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    /** Aggregates byte/file counters and forwards them to the UI listener. */
+    private static final class Progress {
+        private final DownloadListener listener;
+        private long totalBytes;
+        private int totalFiles;
+        private volatile long doneBytes;
+        private volatile int doneFiles;
+        private volatile boolean cancelled;
+        private long lastEmit;
+
+        Progress(DownloadListener listener) { this.listener = listener; }
+
+        void addTotals(JSONArray mapping) {
+            if (mapping == null) return;
+            for (int i = 0; i < mapping.length(); i++) {
+                JSONObject f = mapping.optJSONObject(i);
+                if (f == null) continue;
+                totalFiles++;
+                long s = f.optLong("size", -1);
+                if (s > 0) totalBytes += s;
+            }
+        }
+
+        void emitTotals() {
+            if (listener != null) listener.onTotals(totalBytes, totalFiles);
+        }
+
+        void addBytes(int n) {
+            doneBytes += n;
+            maybeEmit(false);
+        }
+
+        void fileSkipped(long bytes) {
+            doneBytes += bytes;
+            doneFiles++;
+            maybeEmit(true);
+        }
+
+        void fileDone() {
+            doneFiles++;
+            maybeEmit(true);
+        }
+
+        private void maybeEmit(boolean force) {
+            if (listener == null) return;
+            long now = System.currentTimeMillis();
+            if (force || now - lastEmit >= 250) {
+                lastEmit = now;
+                listener.onProgress(doneBytes, doneFiles);
+            }
+        }
+
+        void checkCancelled() throws Exception {
+            if (cancelled) throw new Exception("Скачивание отменено");
+        }
+
+        void cancel() { cancelled = true; }
     }
 
     private static boolean sha256Matches(File f, String expected) throws Exception {

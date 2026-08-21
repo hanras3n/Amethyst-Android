@@ -202,21 +202,29 @@ public final class LoliLandApi {
 
     private static InputStream downloadByHash(AuthResult creds, String base, String sha256) throws IOException {
         IOException last = null;
+        int lastStatus = 0;
+        String lastBody = "";
         for (String gw : gateways()) {
+            String url = gw + base + sha256.toLowerCase() + ".zip";
             try {
-                HttpURLConnection c = open(gw + base + sha256.toLowerCase() + ".zip", "GET");
+                HttpURLConnection c = open(url, "GET");
                 setCommonHeaders(c, creds);
                 int status = c.getResponseCode();
                 if (status < 200 || status >= 300) {
-                    IOException err = describeHttpError(status, readAll(c));
+                    lastStatus = status;
+                    lastBody = readAll(c);
                     c.disconnect();
-                    last = err;
+                    last = describeHttpError(status, lastBody);
                     continue;
                 }
                 return c.getInputStream();
             } catch (IOException e) {
                 last = e;
             }
+        }
+        if (last instanceof ApiException) {
+            throw new IOException("HTTP " + lastStatus + " при загрузке " + base + sha256
+                    + ".zip: " + last.getMessage(), last);
         }
         throw last != null ? last : new IOException("Cannot download " + base + sha256);
     }

@@ -144,13 +144,99 @@ public final class LoliLandUi {
                                     showLogin(activity);
                                     return;
                                 }
-                                LoliLandClients.downloadAsync(activity, picked);
+                                startDownloadWithProgress(activity, picked);
                             })
                             .setNegativeButton("Отмена", null)
                             .show();
                 })
                 .setNegativeButton("Закрыть", null)
                 .show();
+    }
+
+    private static void startDownloadWithProgress(android.app.Activity activity,
+            LoliLandClients.ClientEntry entry) {
+        android.content.Context ctx = activity;
+
+        LinearLayout box = new LinearLayout(ctx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * ctx.getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad / 2, pad, 0);
+
+        final android.widget.TextView status = new android.widget.TextView(ctx);
+        status.setText("Подготовка...");
+        box.addView(status);
+
+        final android.widget.ProgressBar bar = new android.widget.ProgressBar(ctx, null,
+                android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(10000);
+        bar.setProgress(0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = pad / 2;
+        bar.setLayoutParams(lp);
+        box.addView(bar);
+
+        final long[] totals = {0, 0}; // bytes, files
+        final long[] lastUi = {0};
+
+        final AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setTitle("Скачивание: " + entry.displayName)
+                .setView(box)
+                .setNegativeButton("Отмена", null)
+                .setCancelable(false)
+                .create();
+
+        final java.util.concurrent.atomic.AtomicBoolean finished =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        LoliLandClients.DownloadListener listener = new LoliLandClients.DownloadListener() {
+            @Override public void onTotals(long totalBytes, int totalFiles) {
+                totals[0] = totalBytes;
+                totals[1] = totalFiles;
+            }
+            @Override public void onProgress(long bytesDone, int filesDone) {
+                long now = System.currentTimeMillis();
+                synchronized (lastUi) {
+                    if (now - lastUi[0] < 200) return;
+                    lastUi[0] = now;
+                }
+                activity.runOnUiThread(() -> {
+                    long tb = totals[0];
+                    int pct = tb > 0 ? (int) Math.min(10000L, bytesDone * 10000L / tb) : 0;
+                    bar.setProgress(pct);
+                    status.setText(formatMb(bytesDone) + " из " + formatMb(tb)
+                            + "  ·  файлы: " + filesDone + "/" + totals[1]
+                            + "  ·  " + (pct / 100) + "%");
+                });
+            }
+            @Override public void onDone() {
+                if (!finished.compareAndSet(false, true)) return;
+                activity.runOnUiThread(() -> {
+                    try { dialog.dismiss(); } catch (Exception ignored) {}
+                    toast(activity, "LoliLand: \"" + entry.displayName + "\" установлена!");
+                });
+            }
+            @Override public void onError() {
+                finished.set(true);
+                activity.runOnUiThread(() -> {
+                    try { dialog.dismiss(); } catch (Exception ignored) {}
+                });
+            }
+        };
+
+        dialog.setOnShowListener(d ->
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+                    v.setEnabled(false);
+                    toast(activity, "Отмена...");
+                    LoliLandClients.cancelCurrentDownload();
+                }));
+
+        dialog.show();
+        LoliLandClients.downloadAsync(activity, entry, listener);
+    }
+
+    private static String formatMb(long bytes) {
+        return String.format(java.util.Locale.US, "%.1f МБ", bytes / 1048576.0);
     }
 
     /* ==================== MISC ==================== */
