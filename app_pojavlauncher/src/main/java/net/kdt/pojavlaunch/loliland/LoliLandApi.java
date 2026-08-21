@@ -2,6 +2,8 @@ package net.kdt.pojavlaunch.loliland;
 
 import android.os.Build;
 
+import net.kdt.pojavlaunch.PojavApplication;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;

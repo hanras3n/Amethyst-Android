@@ -167,11 +167,7 @@ public final class LoliLandBuildImporter {
         account.accessToken = "0";
         account.clientToken = "0";
         account.isMicrosoft = false;
-        if (manifest.uuid != null && !manifest.uuid.trim().isEmpty()) {
-            account.profileId = manifest.uuid.trim().replace("-", "");
-        } else {
-            account.profileId = offlineUuid(username).replace("-", "");
-        }
+        account.profileId = offlineUuid(username).replace("-", "");
         account.save();
         return account;
     }
