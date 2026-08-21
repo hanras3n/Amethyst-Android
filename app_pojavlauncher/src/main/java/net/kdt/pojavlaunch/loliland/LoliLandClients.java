@@ -308,7 +308,8 @@ public final class LoliLandClients {
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("^(assets-[^/]+/[^/]+/).+");
         String prefix = null;
         for (int i = 0; i < mapping.length(); i++) {
-            String original = mapping.optJSONObject(i) == null ? "" : mapping.getJSONObject(i).optString("original", "");
+            org.json.JSONObject obj = mapping.optJSONObject(i);
+            String original = obj == null ? "" : obj.optString("original", "");
             java.util.regex.Matcher m = p.matcher(original);
             if (!m.matches()) return null; // inconsistent -> no stripping
             if (prefix == null) prefix = m.group(1);
