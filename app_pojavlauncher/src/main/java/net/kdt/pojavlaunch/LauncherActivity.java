@@ -341,6 +341,7 @@ public class LauncherActivity extends BaseActivity {
         new AsyncVersionList().getVersionList(versions -> ExtraCore.setValue(ExtraConstants.RELEASE_TABLE, versions), false);
 
         LoliLandBuildImporter.scanAndImportAsync(this);
+        net.kdt.pojavlaunch.loliland.LoliLandInit.onStart(this);
 
 
         mInstallTracker = new ModloaderInstallTracker(this);

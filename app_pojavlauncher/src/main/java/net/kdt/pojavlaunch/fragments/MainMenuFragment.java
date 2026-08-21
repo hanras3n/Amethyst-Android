@@ -54,6 +54,15 @@ public class MainMenuFragment extends Fragment {
         Button mInstallJarButton = view.findViewById(R.id.install_jar_button);
         Button mShareLogsButton = view.findViewById(R.id.share_logs_button);
         Button mOpenDirectoryButton = view.findViewById(R.id.open_files_button);
+        View mLoliLandButton = view.findViewById(R.id.loliland_button);
+        if (mLoliLandButton != null) {
+            mLoliLandButton.setOnClickListener(v ->
+                    net.kdt.pojavlaunch.loliland.LoliLandUi.showClients(requireActivity()));
+            mLoliLandButton.setOnLongClickListener(v -> {
+                net.kdt.pojavlaunch.loliland.LoliLandUi.showLogin(requireActivity());
+                return true;
+            });
+        }
 
         ImageButton mEditProfileButton = view.findViewById(R.id.edit_profile_button);
         Button mPlayButton = view.findViewById(R.id.play_button);

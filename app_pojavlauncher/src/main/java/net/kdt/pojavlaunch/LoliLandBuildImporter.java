@@ -107,17 +107,31 @@ public final class LoliLandBuildImporter {
 
         copyAssetIfNeeded(ctx, "loliland_tech.json", Tools.CTRLMAP_PATH);
 
-        String gameDirRelative = ".minecraft/games/" + manifest.systemName;
+        installBuildProfile(ctx, manifest.systemName, manifest.displayName,
+                manifest.versionId, manifest.javaArgs, manifest.username);
 
-        MinecraftAccount account = installAccount(manifest);
+        File processed = new File(doneDir, zip.getName());
+        if (processed.exists()) processed.delete();
+        FileUtils.moveFile(zip, processed);
+        FileUtils.deleteQuietly(stage);
+
+        return manifest;
+    }
+
+    /** Installs/updates the launcher profile + game account for a loliland build. Reused by the online downloader. */
+    public static void installBuildProfile(Context ctx, String systemName, String displayName,
+            String versionId, List<String> javaArgs, String forcedUsername) throws IOException {
+        String gameDirRelative = ".minecraft/games/" + systemName;
+
+        MinecraftAccount account = installAccount(forcedUsername);
 
         LauncherProfiles.load();
         MinecraftProfile profile = new MinecraftProfile();
-        profile.name = "LoliLand: " + manifest.displayName;
+        profile.name = "LoliLand: " + displayName;
         profile.type = "custom";
-        profile.lastVersionId = manifest.versionId;
+        profile.lastVersionId = versionId;
         profile.gameDir = gameDirRelative;
-        profile.javaArgs = joinArgs(manifest.javaArgs);
+        profile.javaArgs = joinArgs(javaArgs);
         profile.icon = "Fabric";
         String profileKey = LauncherProfiles.getFreeProfileKey();
         LauncherProfiles.mainProfileJson.profiles.put(profileKey, profile);
@@ -132,18 +146,15 @@ public final class LoliLandBuildImporter {
         prefs.apply();
 
         PojavProfile.setCurrentProfile(ctx, account.username);
-
-        File processed = new File(doneDir, zip.getName());
-        if (processed.exists()) processed.delete();
-        FileUtils.moveFile(zip, processed);
-        FileUtils.deleteQuietly(stage);
-
-        return manifest;
     }
 
     private static MinecraftAccount installAccount(BuildManifest manifest) throws IOException {
-        String username = manifest.username == null || manifest.username.trim().isEmpty()
-                ? "Player" : manifest.username.trim();
+        return installAccount(manifest == null ? null : manifest.username);
+    }
+
+    private static MinecraftAccount installAccount(String rawUsername) throws IOException {
+        String username = rawUsername == null || rawUsername.trim().isEmpty()
+                ? "Player" : rawUsername.trim();
         File accountFile = new File(Tools.DIR_ACCOUNT_NEW, username + ".json");
         MinecraftAccount account;
         if (accountFile.isFile()) {
@@ -250,7 +261,7 @@ public final class LoliLandBuildImporter {
         }
     }
 
-    private static void notify(Context ctx, String message) {
+    public static void notify(Context ctx, String message) {
         Log.i(TAG, message);
         Tools.runOnUiThread(() -> Toast.makeText(ctx, message, Toast.LENGTH_LONG).show());
     }

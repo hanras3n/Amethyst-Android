@@ -25,8 +25,9 @@ import net.kdt.pojavlaunch.utils.*;
 import net.kdt.pojavlaunch.utils.FileUtils;
 
 public class PojavApplication extends Application {
-	public static final String CRASH_REPORT_TAG = "PojavCrashReport";
-	public static final ExecutorService sExecutorService = new ThreadPoolExecutor(4, 4, 500, TimeUnit.MILLISECONDS,  new LinkedBlockingQueue<>());
+    public static final String CRASH_REPORT_TAG = "PojavCrashReport";
+    public static final ExecutorService sExecutorService = new ThreadPoolExecutor(4, 4, 500, TimeUnit.MILLISECONDS,  new LinkedBlockingQueue<>());
+    public static android.content.Context sAppContext;
 	
 	@Override
 	public void onCreate() {
@@ -58,6 +59,7 @@ public class PojavApplication extends Application {
 		
 		try {
 			super.onCreate();
+			sAppContext = this;
 			if(Tools.checkStorageRoot(this)){
 				// Implicitly initializes early constants and storage constants.
 				// Required to run the main activity properly.
