@@ -58,8 +58,7 @@ public final class LoliLandBuildImporter {
         File[] zips = importDir.listFiles((d, n) -> n.toLowerCase(Locale.ROOT).endsWith(".zip"));
         if (zips == null || zips.length == 0) return;
 
-        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(importDir);
-        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(doneDir);
+        if (!doneDir.isDirectory()) doneDir.mkdirs();
 
         for (File zip : zips) {
             try {
