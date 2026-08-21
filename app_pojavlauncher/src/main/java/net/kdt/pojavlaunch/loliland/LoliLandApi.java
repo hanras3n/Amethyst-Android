@@ -191,7 +191,12 @@ public final class LoliLandApi {
                 HttpURLConnection c = open(gw + "/download/client/" + clientUuid + "/" + relativePath, "GET");
                 setCommonHeaders(c, creds);
                 int status = c.getResponseCode();
-                if (status < 200 || status >= 300) continue;
+                if (status < 200 || status >= 300) {
+                    IOException err = describeHttpError(status, readAll(c));
+                    c.disconnect();
+                    last = err;
+                    continue;
+                }
                 return c.getInputStream();
             } catch (IOException e) {
                 last = e;
@@ -208,7 +213,12 @@ public final class LoliLandApi {
                 HttpURLConnection c = open(gw + "/download/assets/" + relativePath, "GET");
                 setCommonHeaders(c, creds);
                 int status = c.getResponseCode();
-                if (status < 200 || status >= 300) continue;
+                if (status < 200 || status >= 300) {
+                    IOException err = describeHttpError(status, readAll(c));
+                    c.disconnect();
+                    last = err;
+                    continue;
+                }
                 return c.getInputStream();
             } catch (IOException e) {
                 last = e;

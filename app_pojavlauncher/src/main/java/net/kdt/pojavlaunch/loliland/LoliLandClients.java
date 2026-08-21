@@ -1,6 +1,7 @@
 package net.kdt.pojavlaunch.loliland;
 
 import android.content.Context;
+import android.widget.TextView;
 
 import net.kdt.pojavlaunch.LoliLandBuildImporter;
 import net.kdt.pojavlaunch.PojavApplication;
@@ -13,6 +14,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,21 +65,59 @@ public final class LoliLandClients {
     /* ==================== DOWNLOAD ==================== */
 
     public static void downloadAsync(Context ctx, ClientEntry entry) {
+        android.app.Activity activity = ctx instanceof android.app.Activity ? (android.app.Activity) ctx : null;
         Context app = ctx.getApplicationContext();
         PojavApplication.sExecutorService.execute(() -> {
             try {
                 downloadSync(app, entry);
-                LoliLandBuildImporter.notify(app, "LoliLand: \"" + entry.displayName + "\" installed!");
+                LoliLandBuildImporter.notify(app, "LoliLand: \"" + entry.displayName + "\" установлена!");
             } catch (Throwable t) {
                 android.util.Log.e("LoliLandDL", "Download failed", t);
-                LoliLandBuildImporter.notify(app, "LoliLand download failed: " + t.getMessage());
+                String msg = t.getClass().getSimpleName()
+                        + (t.getMessage() != null ? ": " + t.getMessage() : "");
+                appendErrorLog(app, entry, t);
+                showError(activity, "Ошибка скачивания \"" + entry.displayName + "\"", msg);
             }
         });
     }
 
+    private static void showError(android.app.Activity activity, String title, String message) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            if (activity != null) LoliLandBuildImporter.notify(activity, title + ": " + message);
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            TextView tv = new TextView(activity);
+            tv.setText(message);
+            tv.setTextIsSelectable(true);
+            int pad = (int) (20 * activity.getResources().getDisplayMetrics().density);
+            tv.setPadding(pad, pad / 2, pad, 0);
+            new android.app.AlertDialog.Builder(activity)
+                    .setTitle(title)
+                    .setView(tv)
+                    .setPositiveButton("OK", null)
+                    .show();
+        });
+    }
+
+    private static void appendErrorLog(Context ctx, ClientEntry entry, Throwable t) {
+        try {
+            File log = new File(Tools.DIR_GAME_HOME, "loliland-error.log");
+            FileOutputStream fos = new FileOutputStream(log, true);
+            String ts = java.text.DateFormat.getDateTimeInstance().format(new java.util.Date());
+            String head = "\n==== " + ts + " | client=" + entry.systemName
+                    + " uuid=" + entry.uuid + " ====\n";
+            fos.write(head.getBytes(StandardCharsets.UTF_8));
+            java.io.StringWriter sw = new java.io.StringWriter();
+            t.printStackTrace(new java.io.PrintWriter(sw));
+            fos.write(sw.toString().getBytes(StandardCharsets.UTF_8));
+            fos.close();
+        } catch (Exception ignored) {}
+    }
+
     private static void downloadSync(Context ctx, ClientEntry entry) throws Exception {
         LoliLandApi.AuthResult creds = LoliLandAuth.loadCreds(ctx);
-        if (creds == null) throw new IllegalStateException("Not logged in");
+        if (creds == null) throw new IllegalStateException("Не выполнен вход в аккаунт LoliLand");
 
         JSONObject info = LoliLandApi.clientInfo(creds, entry.uuid);
         JSONObject launch = info.getJSONObject("launch");
@@ -99,7 +139,7 @@ public final class LoliLandClients {
             File dest = new File(gameDir, original);
             fetchIfNeeded(creds, entry.uuid, original, dest, size, sha256);
             done.add(new String[]{original, dest.getAbsolutePath()});
-            if (i % 25 == 0) progress(ctx, entry.displayName, i + 1, total);
+            if (i % 200 == 0) progress(ctx, entry.displayName, i + 1, total);
         }
         progress(ctx, entry.displayName, total, total);
 
@@ -119,7 +159,7 @@ public final class LoliLandClients {
             if (rel.startsWith("indexes/") && rel.endsWith(".json") && assetIndexId == null) {
                 assetIndexId = rel.substring("indexes/".length(), rel.length() - ".json".length());
             }
-            if (i % 50 == 0) progressAssets(ctx, entry.displayName, i + 1, atotal);
+            if (i % 400 == 0) progressAssets(ctx, entry.displayName, i + 1, atotal);
         }
         if (assetIndexId == null) assetIndexId = guessAssetIndex(launch);
 
