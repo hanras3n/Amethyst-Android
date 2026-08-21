@@ -10,7 +10,6 @@ import androidx.annotation.Keep;
 import com.google.gson.Gson;
 
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
-import net.kdt.pojavlaunch.utils.FileUtils;
 import net.kdt.pojavlaunch.value.MinecraftAccount;
 import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
 import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile;
@@ -59,8 +58,8 @@ public final class LoliLandBuildImporter {
         File[] zips = importDir.listFiles((d, n) -> n.toLowerCase(Locale.ROOT).endsWith(".zip"));
         if (zips == null || zips.length == 0) return;
 
-        FileUtils.ensureDirectory(importDir);
-        FileUtils.ensureDirectory(doneDir);
+        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(importDir);
+        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(doneDir);
 
         for (File zip : zips) {
             try {
@@ -77,7 +76,7 @@ public final class LoliLandBuildImporter {
     private static BuildManifest importZip(Context ctx, File zip, File doneDir) throws IOException {
         File stage = new File(zip.getParentFile(), "stage-" + System.currentTimeMillis());
         FileUtils.deleteDirectory(stage);
-        FileUtils.ensureDirectory(stage);
+        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(stage);
         unzip(zip, stage);
 
         File manifestFile = new File(stage, "loliland-build.json");
@@ -104,7 +103,7 @@ public final class LoliLandBuildImporter {
         if (gameSource.isDirectory()) {
             FileUtils.moveDirectory(gameSource, gameTarget);
         } else {
-            FileUtils.ensureDirectory(gameTarget);
+            net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(gameTarget);
         }
 
         copyAssetIfNeeded(ctx, "loliland_tech.json", Tools.CTRLMAP_PATH);
@@ -186,7 +185,7 @@ public final class LoliLandBuildImporter {
     }
 
     private static void copyAssetIfNeeded(Context ctx, String assetName, String outputDir) throws IOException {
-        FileUtils.ensureDirectory(new File(outputDir));
+        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(new File(outputDir));
         File out = new File(outputDir, assetName);
         if (!out.exists()) {
             Tools.copyAssetFile(ctx, assetName, outputDir, false);
@@ -195,7 +194,7 @@ public final class LoliLandBuildImporter {
 
     private static void mergeDirectory(File source, File target) throws IOException {
         if (!source.isDirectory()) return;
-        FileUtils.ensureDirectory(target);
+        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(target);
         File[] children = source.listFiles();
         if (children == null) return;
         for (File child : children) {
@@ -210,7 +209,7 @@ public final class LoliLandBuildImporter {
     }
 
     private static void unzip(File zip, File output) throws IOException {
-        FileUtils.ensureDirectory(output);
+        net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(output);
         String canonicalOutput = output.getCanonicalPath() + File.separator;
         try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new FileInputStream(zip))) {
             byte[] buffer = new byte[1 << 16];
@@ -220,10 +219,10 @@ public final class LoliLandBuildImporter {
                 if (!outFile.getCanonicalPath().startsWith(canonicalOutput))
                     throw new IOException("Blocked zip-slip entry: " + entry.getName());
                 if (entry.isDirectory()) {
-                    FileUtils.ensureDirectory(outFile);
+                    net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(outFile);
                     continue;
                 }
-                FileUtils.ensureDirectory(outFile.getParentFile());
+                net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(outFile.getParentFile());
                 try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) {
                     int read;
                     while ((read = zis.read(buffer)) != -1) fos.write(buffer, 0, read);
