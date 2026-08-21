@@ -167,8 +167,8 @@ public final class LoliLandApi {
                     continue;
                 }
                 return new JSONObject(text);
-            } catch (IOException e) {
-                last = e;
+            } catch (Exception e) {
+                last = e instanceof IOException ? (IOException) e : new IOException(e);
             }
         }
         throw last != null ? last : new IOException("No gateway reachable");
