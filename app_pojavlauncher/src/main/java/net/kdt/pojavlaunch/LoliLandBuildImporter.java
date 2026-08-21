@@ -1,4 +1,4 @@
-﻿package net.kdt.pojavlaunch;
+package net.kdt.pojavlaunch;
 
 import android.content.Context;
 import android.content.SharedPreferences;
