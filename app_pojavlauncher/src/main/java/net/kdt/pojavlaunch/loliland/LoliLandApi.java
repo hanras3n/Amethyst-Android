@@ -183,34 +183,28 @@ public final class LoliLandApi {
         return new IOException("HTTP " + status);
     }
 
-    /** Opens a download stream for a client file; caller must close. */
-    public static InputStream downloadClientFile(AuthResult creds, String clientUuid, String relativePath) throws IOException {
-        IOException last = null;
-        for (String gw : gateways()) {
-            try {
-                HttpURLConnection c = open(gw + "/download/client/" + clientUuid + "/" + relativePath, "GET");
-                setCommonHeaders(c, creds);
-                int status = c.getResponseCode();
-                if (status < 200 || status >= 300) {
-                    IOException err = describeHttpError(status, readAll(c));
-                    c.disconnect();
-                    last = err;
-                    continue;
-                }
-                return c.getInputStream();
-            } catch (IOException e) {
-                last = e;
-            }
-        }
-        throw last != null ? last : new IOException("Cannot download " + relativePath);
+    /**
+     * Opens a download stream for a client file addressed by its SHA-256 hash
+     * ("/download/client/&lt;uuid&gt;/&lt;sha256&gt;.zip" — despite the extension the payload is the raw file).
+     * Caller must close.
+     */
+    public static InputStream downloadClientFile(AuthResult creds, String clientUuid, String sha256) throws IOException {
+        return downloadByHash(creds, "/download/client/" + clientUuid + "/", sha256);
     }
 
-    /** Opens a download stream for an asset file; caller must close. */
-    public static InputStream downloadAssetFile(AuthResult creds, String relativePath) throws IOException {
+    /**
+     * Opens a download stream for an asset file addressed by its SHA-256 hash
+     * ("/download/assets/&lt;assetsUrlPart&gt;/&lt;sha256&gt;.zip"). Caller must close.
+     */
+    public static InputStream downloadAssetFile(AuthResult creds, String assetsUrlPart, String sha256) throws IOException {
+        return downloadByHash(creds, "/download/assets/" + assetsUrlPart + "/", sha256);
+    }
+
+    private static InputStream downloadByHash(AuthResult creds, String base, String sha256) throws IOException {
         IOException last = null;
         for (String gw : gateways()) {
             try {
-                HttpURLConnection c = open(gw + "/download/assets/" + relativePath, "GET");
+                HttpURLConnection c = open(gw + base + sha256.toLowerCase() + ".zip", "GET");
                 setCommonHeaders(c, creds);
                 int status = c.getResponseCode();
                 if (status < 200 || status >= 300) {
@@ -224,7 +218,7 @@ public final class LoliLandApi {
                 last = e;
             }
         }
-        throw last != null ? last : new IOException("Cannot download asset " + relativePath);
+        throw last != null ? last : new IOException("Cannot download " + base + sha256);
     }
 
     /* ===================== HELPERS ===================== */

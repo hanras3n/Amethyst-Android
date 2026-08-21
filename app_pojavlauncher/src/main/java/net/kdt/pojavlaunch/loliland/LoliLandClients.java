@@ -143,18 +143,18 @@ public final class LoliLandClients {
         }
         progress(ctx, entry.displayName, total, total);
 
-        // 2. Assets -> shared assets root (standard pojav layout)
+        // 2. Assets -> shared assets root (objects are content-addressed, safe to merge)
         JSONArray assetMapping = info.optJSONArray("assetsFileMapping");
-        String stripPrefix = detectAssetPrefix(assetMapping);
+        String assetsRaw = launch.optString("assets", "");
+        String assetsUrlPart = assetsRaw.replace(':', '/').replace('\\', '/');
         String assetIndexId = null;
         int atotal = assetMapping == null ? 0 : assetMapping.length();
         for (int i = 0; i < atotal; i++) {
             JSONObject f = assetMapping.getJSONObject(i);
             String original = f.getString("original");
-            String rel = stripPrefix != null && original.startsWith(stripPrefix)
-                    ? original.substring(stripPrefix.length()) : original;
+            String rel = original.replace('\\', '/');
             File dest = new File(Tools.ASSETS_PATH, rel);
-            fetchAsset(creds, original, dest,
+            fetchAsset(creds, assetsUrlPart, dest,
                     f.optLong("size", -1), f.optString("sha256", ""));
             if (rel.startsWith("indexes/") && rel.endsWith(".json") && assetIndexId == null) {
                 assetIndexId = rel.substring("indexes/".length(), rel.length() - ".json".length());
@@ -214,6 +214,49 @@ public final class LoliLandClients {
             }
         }
 
+        // 3b. Safety net: Tools.generateLibClasspath throws unless some library is named
+        // org.lwjgl(.lwjgl)?:lwjgl:<version>. If the server classPath had no lwjgl jar,
+        // promote one from the downloaded client files.
+        boolean hasLwjgl = false;
+        for (int i = 0; i < libraries.length(); i++) {
+            String n = libraries.getJSONObject(i).optString("name", "");
+            if (n.startsWith("org.lwjgl")) { hasLwjgl = true; break; }
+        }
+        if (!hasLwjgl) {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                    "(?i)^lwjgl-(\\d[\\w.]*?)\\.jar$");
+            File best = null; String bestVer = null; long bestLen = -1;
+            for (int i = 0; i < done.size(); i++) {
+                String orig = done.get(i)[0];
+                int slash = Math.max(orig.lastIndexOf('/'), orig.lastIndexOf('\\'));
+                String base = slash >= 0 ? orig.substring(slash + 1) : orig;
+                String lower = base.toLowerCase();
+                if (lower.contains("natives") || lower.contains("sources")
+                        || lower.contains("javadoc")) continue;
+                java.util.regex.Matcher m = p.matcher(base);
+                if (!m.matches()) continue;
+                long len = new File(done.get(i)[1]).length();
+                if (len > bestLen) { bestLen = len; best = new File(done.get(i)[1]); bestVer = m.group(1); }
+            }
+            if (best != null && bestVer != null) {
+                int idx = libraries.length();
+                String stored = idx + "_lwjgl-" + bestVer + ".jar";
+                File libDest = new File(libTargetBase, stored);
+                if (!libDest.isFile() || libDest.length() != best.length()) {
+                    ensureDir(libDest.getParentFile());
+                    copyFile(best, libDest);
+                }
+                JSONObject lib = new JSONObject();
+                lib.put("name", (bestVer.startsWith("3") ? "org.lwjgl:lwjgl:" : "org.lwjgl.lwjgl:lwjgl:") + bestVer);
+                JSONObject artifact = new JSONObject();
+                artifact.put("path", "loliland/" + systemName + "/" + stored);
+                JSONObject downloads = new JSONObject();
+                downloads.put("artifact", artifact);
+                lib.put("downloads", downloads);
+                libraries.put(lib);
+            }
+        }
+
         // 4. Install version json + jar
         File versionDir = new File(Tools.DIR_HOME_VERSION, versionId);
         ensureDir(versionDir);
@@ -257,9 +300,12 @@ public final class LoliLandClients {
             String original, File dest, long size, String sha256) throws Exception {
         if (dest.isFile() && (size <= 0 || dest.length() == size)
                 && (sha256.isEmpty() || sha256Matches(dest, sha256))) return;
+        if (sha256 == null || sha256.isEmpty()) {
+            throw new Exception("Server sent no SHA-256 for " + original);
+        }
         ensureDir(dest.getParentFile());
         File tmp = new File(dest.getParentFile(), dest.getName() + ".part");
-        InputStream in = LoliLandApi.downloadClientFile(creds, uuid, encode(original));
+        InputStream in = LoliLandApi.downloadClientFile(creds, uuid, sha256);
         transfer(in, tmp);
         if (sha256 != null && !sha256.isEmpty() && !sha256Matches(tmp, sha256)) {
             tmp.delete();
@@ -269,13 +315,19 @@ public final class LoliLandClients {
         if (!tmp.renameTo(dest)) copyFile(tmp, dest);
     }
 
-    private static void fetchAsset(LoliLandApi.AuthResult creds, String serverPath,
+    private static void fetchAsset(LoliLandApi.AuthResult creds, String assetsUrlPart,
             File dest, long size, String sha256) throws Exception {
         if (dest.isFile() && (size <= 0 || dest.length() == size)
                 && (sha256.isEmpty() || sha256Matches(dest, sha256))) return;
+        if (sha256 == null || sha256.isEmpty()) {
+            throw new Exception("Server sent no SHA-256 for asset " + dest.getName());
+        }
+        if (assetsUrlPart.isEmpty()) {
+            throw new Exception("Server sent no assets id for " + dest.getName());
+        }
         ensureDir(dest.getParentFile());
         File tmp = new File(dest.getParentFile(), dest.getName() + ".part");
-        InputStream in = LoliLandApi.downloadAssetFile(creds, encode(serverPath));
+        InputStream in = LoliLandApi.downloadAssetFile(creds, assetsUrlPart, sha256);
         transfer(in, tmp);
         if (dest.exists()) dest.delete();
         if (!tmp.renameTo(dest)) copyFile(tmp, dest);
@@ -300,20 +352,6 @@ public final class LoliLandClients {
         in.close();
     }
 
-    /** URL-encode each path segment but keep '/' separators. */
-    private static String encode(String path) {
-        StringBuilder sb = new StringBuilder();
-        for (String seg : path.replace('\\', '/').split("/")) {
-            if (sb.length() > 0) sb.append('/');
-            try {
-                sb.append(java.net.URLEncoder.encode(seg, "UTF-8").replace("+", "%20"));
-            } catch (Exception e) {
-                sb.append(seg);
-            }
-        }
-        return sb.toString();
-    }
-
     private static boolean sha256Matches(File f, String expected) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         FileInputStream fis = new FileInputStream(f);
@@ -336,22 +374,6 @@ public final class LoliLandClients {
     private static void progressAssets(Context ctx, String name, int done, int total) {
         LoliLandBuildImporter.notify(ctx, "LoliLand: downloading " + name + " assets — "
                 + done + "/" + Math.max(total, 1) + " files");
-    }
-
-    /** Assets on the official layout live under e.g. "assets-1.7.10/master/..."; find that common prefix. */
-    private static String detectAssetPrefix(JSONArray mapping) {
-        if (mapping == null || mapping.length() == 0) return null;
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("^(assets-[^/]+/[^/]+/).+");
-        String prefix = null;
-        for (int i = 0; i < mapping.length(); i++) {
-            org.json.JSONObject obj = mapping.optJSONObject(i);
-            String original = obj == null ? "" : obj.optString("original", "");
-            java.util.regex.Matcher m = p.matcher(original);
-            if (!m.matches()) return null; // inconsistent -> no stripping
-            if (prefix == null) prefix = m.group(1);
-            else if (!prefix.equals(m.group(1))) return null;
-        }
-        return prefix;
     }
 
     private static String guessAssetIndex(JSONObject launch) {
