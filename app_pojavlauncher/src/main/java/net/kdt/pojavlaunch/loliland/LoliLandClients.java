@@ -27,7 +27,10 @@ public final class LoliLandClients {
         public String systemName;
         public String displayName;
         public String size;
-        @Override public String toString() { return displayName + " (" + size + ")"; }
+        public boolean installed;
+        @Override public String toString() {
+            return displayName + " (" + size + ")" + (installed ? " — установлена" : "");
+        }
     }
 
     private LoliLandClients() {}
@@ -56,6 +59,8 @@ public final class LoliLandClients {
                 else if ("SMALL".equals(e.size)) e.size = "лёгкая";
                 if (e.uuid == null || e.uuid.isEmpty()) continue;
                 if (e.systemName == null || e.systemName.isEmpty()) e.systemName = e.uuid.substring(0, 8);
+                e.installed = new File(Tools.DIR_HOME_VERSION,
+                        "loliland-" + sanitize(e.systemName)).isDirectory();
                 out.add(e);
             }
         }

@@ -18,7 +18,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
-
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
@@ -88,14 +87,6 @@
                 android:text="@string/mcl_button_open_directory"
 
                 app:layout_constraintTop_toBottomOf="@id/share_logs_button" />
-
-            <com.kdt.mcgui.LauncherMenuButton
-                android:id="@+id/loliland_button"
-                style="@style/LauncherMenuButton.Universal"
-                android:layout_width="match_parent"
-                android:drawableStart="@drawable/ic_menu_home"
-                android:text="LoliLand"
-                app:layout_constraintTop_toBottomOf="@id/open_files_button" />
         </androidx.constraintlayout.widget.ConstraintLayout>
     </ScrollView>
 
@@ -129,7 +120,7 @@
         android:background="?android:attr/selectableItemBackground"
         android:src="@drawable/ic_edit_profile"
         app:layout_constraintBottom_toBottomOf="@+id/mc_version_spinner"
-        app:layout_constraintEnd_toStartOf="@+id/play_button"
+        app:layout_constraintEnd_toStartOf="@+id/loliland_button"
         app:layout_constraintTop_toTopOf="@+id/mc_version_spinner" />
 
 
@@ -143,6 +134,19 @@
 
         android:translationZ="-1dp"
         app:layout_constraintTop_toTopOf="@id/mc_version_spinner" />
+
+    <com.kdt.mcgui.LauncherMenuButton
+        android:id="@+id/loliland_button"
+        style="@style/LauncherMenuButton.Universal"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginEnd="@dimen/_8sdp"
+        android:drawableStart="@drawable/ic_menu_home"
+        android:text="LoliLand"
+
+        app:layout_constraintBottom_toBottomOf="@+id/mc_version_spinner"
+        app:layout_constraintEnd_toStartOf="@+id/play_button"
+        app:layout_constraintTop_toTopOf="@+id/mc_version_spinner" />
 
     <com.kdt.mcgui.MineButton
         android:id="@+id/play_button"

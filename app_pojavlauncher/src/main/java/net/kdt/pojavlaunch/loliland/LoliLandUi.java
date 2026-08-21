@@ -134,23 +134,57 @@ public final class LoliLandUi {
                 .setTitle("Сборки LoliLand")
                 .setItems(items, (d, which) -> {
                     LoliLandClients.ClientEntry picked = clients.get(which);
-                    new AlertDialog.Builder(activity)
-                            .setTitle(picked.displayName)
-                            .setMessage("Скачать сборку (" + picked.size + ")?\n" +
-                                    "Файлы проверяются по SHA-256, докачка поддерживается.")
-                            .setPositiveButton("Скачать", (d2, w2) -> {
-                                if (!LoliLandAuth.isLoggedIn(activity)) {
-                                    toast(activity, "Для скачивания войдите в аккаунт");
-                                    showLogin(activity);
-                                    return;
-                                }
-                                startDownloadWithProgress(activity, picked);
-                            })
-                            .setNegativeButton("Отмена", null)
-                            .show();
+                    if (picked.installed) {
+                        new AlertDialog.Builder(activity)
+                                .setTitle(picked.displayName)
+                                .setMessage("Сборка уже скачана. Запустить?")
+                                .setPositiveButton("Играть", (d2, w2) ->
+                                        launchBuild(activity, picked.systemName))
+                                .setNeutralButton("Переустановить", (d2, w2) ->
+                                        confirmDownload(activity, picked))
+                                .setNegativeButton("Отмена", null)
+                                .show();
+                        return;
+                    }
+                    confirmDownload(activity, picked);
                 })
                 .setNegativeButton("Закрыть", null)
                 .show();
+    }
+
+    private static void confirmDownload(android.app.Activity activity,
+            LoliLandClients.ClientEntry picked) {
+        new AlertDialog.Builder(activity)
+                .setTitle(picked.displayName)
+                .setMessage("Скачать сборку (" + picked.size + ")?\n" +
+                        "После скачивания сборка запустится автоматически.")
+                .setPositiveButton("Скачать и играть", (d2, w2) -> {
+                    if (!LoliLandAuth.isLoggedIn(activity)) {
+                        toast(activity, "Для скачивания войдите в аккаунт");
+                        showLogin(activity);
+                        return;
+                    }
+                    startDownloadWithProgress(activity, picked);
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    /** Selects the profile of an installed build and triggers the normal launch flow. */
+    public static void launchBuild(android.app.Activity activity, String systemName) {
+        String versionId = "loliland-" + systemName.replaceAll("[^a-zA-Z0-9._-]", "_").toLowerCase();
+        net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.load();
+        for (java.util.Map.Entry<String, net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile> e
+                : net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.mainProfileJson.profiles.entrySet()) {
+            if (versionId.equals(e.getValue().lastVersionId)) {
+                net.kdt.pojavlaunch.prefs.LauncherPreferences.DEFAULT_PREF.edit()
+                        .putString(net.kdt.pojavlaunch.prefs.LauncherPreferences.PREF_KEY_CURRENT_PROFILE,
+                                e.getKey())
+                        .apply();
+                break;
+            }
+        }
+        net.kdt.pojavlaunch.extra.ExtraCore.setValue(net.kdt.pojavlaunch.extra.ExtraConstants.LAUNCH_GAME, true);
     }
 
     private static void startDownloadWithProgress(android.app.Activity activity,
@@ -213,7 +247,8 @@ public final class LoliLandUi {
                 if (!finished.compareAndSet(false, true)) return;
                 activity.runOnUiThread(() -> {
                     try { dialog.dismiss(); } catch (Exception ignored) {}
-                    toast(activity, "LoliLand: \"" + entry.displayName + "\" установлена!");
+                    toast(activity, "LoliLand: \"" + entry.displayName + "\" установлена, запуск...");
+                    launchBuild(activity, entry.systemName);
                 });
             }
             @Override public void onError() {
